@@ -1,0 +1,71 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build and export
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          tags: auth-sessions:latest
+          outputs: type=docker,dest=/tmp/auth-sessions.tar
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: auth-sessions
+          path: /tmp/auth-sessions.tar
+          retention-days: 1
+  lint:
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - name: Download docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: auth-sessions
+          path: /tmp
+      - name: Run Eslint
+        run: |
+          docker load --input /tmp/auth-sessions.tar
+          docker run auth-sessions:latest yarn lint
+  test-e2e:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+      - name: Download docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: auth-sessions
+          path: /tmp
+      - name: Up Redis/MongoDB
+        run: docker-compose -f "docker-compose.yaml" up -d --build
+      - name: Run test:e2e
+        run: |
+          docker load --input /tmp/auth-sessions.tar
+          docker run --network=example-auth-sessions_default auth-sessions:latest yarn test:e2e
+  build:
+    runs-on: ubuntu-latest
+    needs:
+      - test-e2e
+    steps:
+      - name: Download docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: auth-sessions
+          path: /tmp
+      - name: Run build app
+        run: |
+          docker load --input /tmp/auth-sessions.tar
+          docker run auth-sessions:latest yarn build
