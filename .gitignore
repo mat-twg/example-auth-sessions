@@ -4,6 +4,7 @@
 /data
 
 # Dotenv
+.env.e2e
 .env.local
 
 # Logs

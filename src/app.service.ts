@@ -24,14 +24,16 @@ export class AppService {
 
   async signUp(createUserDto: CreateUserDto): Promise<User> {
     return this.usersService.create(createUserDto).then((user) => {
-      this.logger.log(`User [${user.id}] signed up.`, 'SignUp');
+      this.logger.log(`User [${user.id}] signed up`, 'SignUp');
       return user;
     });
   }
 
   async signIn(loginUserDto: LoginUserDto): Promise<User> {
     const user = await this.usersService.findByEmail(loginUserDto.email);
-
+    if (!user) {
+      throw new UnauthorizedException(); // possibly exception - not found
+    }
     if (!(await this.usersService.validate(user, loginUserDto.password))) {
       throw new UnauthorizedException();
     }

@@ -56,13 +56,18 @@ describe('AppController', () => {
         .expect(400);
     });
 
-    it('422 - Unprocessable Entity: duplicated name', () => {
+    it('422 - Unprocessable Entity: duplicated', () => {
       return request(httpServer).post('/sign-up').send(payload).expect(422);
     });
   });
 
   describe('Sign in: /sign-in (POST)', () => {
     let cookie: any;
+
+    it('401 - Unauthorized: user not found with passed credentials', () => {
+      payload.email = 'fake@email.ru';
+      return request(httpServer).post('/sign-in').send(payload).expect(401);
+    });
 
     it('200 - Ok: first get sess cookie', () => {
       payload.email = users[0].email;
@@ -87,11 +92,6 @@ describe('AppController', () => {
     it('400 - Bad Request: credentials input error', () => {
       payload.password = '123';
       return request(httpServer).post('/sign-in').send(payload).expect(400);
-    });
-
-    it('401 - Unauthorized: user not found with passed credentials', () => {
-      payload.password = '12345678-';
-      return request(httpServer).post('/sign-in').send(payload).expect(401);
     });
   });
 

@@ -49,12 +49,17 @@ jobs:
         with:
           name: auth-sessions
           path: /tmp
-      - name: Up Redis/MongoDB
+      - name: Up redis and mongoDB
         run: docker-compose -f "docker-compose.yaml" up -d --build
       - name: Run test:e2e
         run: |
           docker load --input /tmp/auth-sessions.tar
-          docker run --network=example-auth-sessions_default auth-sessions:latest yarn test:e2e
+          docker run\
+          --network=example-auth-sessions_default\
+          -e MONGO_HOST=mongo\
+          -e REDIS_HOST=redis\
+          auth-sessions:latest\
+          yarn test:e2e
   build:
     runs-on: ubuntu-latest
     needs:

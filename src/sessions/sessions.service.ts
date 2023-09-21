@@ -13,11 +13,19 @@ import * as UAParser from 'ua-parser-js';
 export class SessionsService {
   private readonly logger: Logger = new Logger(this.constructor.name);
 
+  private readonly prefix: string;
+  private readonly userKey: string;
+  private readonly shadowKey: string;
+
   constructor(
     private readonly config: ConfigService,
     @Inject(REQUEST) private readonly req: Request,
     @Inject(REDIS) private readonly redis: RedisClientType,
-  ) {}
+  ) {
+    this.prefix = config.get(SESSION.STORAGE_PREFIX);
+    this.userKey = config.get(SESSION.STORAGE_USER_KEY);
+    this.shadowKey = config.get(SESSION.STORAGE_SHADOW_KEY);
+  }
 
   static enrich(session: Record<string, UserSession>): EnrichedSession {
     const key = Object.keys(session)[0];
@@ -34,15 +42,13 @@ export class SessionsService {
 
   async findById(id: string): Promise<UserSession | null> {
     return this.redis
-      .get(this.config.get(SESSION.STORAGE_PREFIX) + id)
+      .get(this.prefix + id)
       .then((session) => JSON.parse(session));
   }
 
   async findAll(userId: string): Promise<Record<string, UserSession>[]> {
     const sessions = Object.keys(
-      await this.redis.hGetAll(
-        this.config.get(SESSION.STORAGE_USER_KEY) + userId,
-      ),
+      await this.redis.hGetAll(this.userKey + userId),
     );
     const activeSessions = await this.redis.mGet(sessions);
     const toClean = [];
@@ -50,10 +56,9 @@ export class SessionsService {
       .map((key, idx) => {
         if (activeSessions[idx] !== null) {
           return {
-            [key.replace(
-              new RegExp(`^${this.config.get(SESSION.STORAGE_PREFIX)}`, 'g'),
-              '',
-            )]: JSON.parse(activeSessions[idx]),
+            [key.replace(new RegExp(`^${this.prefix}`, 'g'), '')]: JSON.parse(
+              activeSessions[idx],
+            ),
           };
         }
         toClean.push(key);
@@ -61,20 +66,26 @@ export class SessionsService {
       .filter((session) => !!session);
 
     if (toClean.length > 0) {
-      await this.redis.hDel(
-        this.config.get(SESSION.STORAGE_USER_KEY) + userId,
-        toClean,
+      await Promise.all(
+        toClean.map((del) =>
+          this.redis.del(
+            del.replace(new RegExp(`^${this.prefix}`, 'g'), this.shadowKey),
+          ),
+        ),
       );
+      await this.redis.hDel(this.userKey + userId, toClean);
     }
-
     return merged as Record<string, UserSession>[];
   }
 
   async create(userId: string): Promise<string | void> {
     if (this.req.session['userId'] && this.req.session['userId'] !== userId) {
-      return this.delete(this.req.session.id, userId).finally(() =>
+      return this.delete(
+        this.req.session.id,
+        this.req.session['userId'],
+      ).finally(() =>
         this.logger.warn(
-          `Session [${this.req.session.id}] of user [${userId}] is compromised and destroyed`,
+          `User [${userId}] suspicious activities: session [${this.req.session.id}] of user [${this.req.session['userId']}] is compromised and destroyed`,
           'Create',
         ),
       );
@@ -86,20 +97,23 @@ export class SessionsService {
       userAgent: this.req.headers['user-agent'],
     });
 
-    return this.redis
-      .hSet(
-        this.config.get(SESSION.STORAGE_USER_KEY) + userId,
-        this.config.get(SESSION.STORAGE_PREFIX) + this.req.session.id,
-        +this.req.session.cookie.expires,
-      )
-      .then(() => this.req.session.id);
+    await this.redis.set(this.shadowKey + this.req.session.id, userId);
+    await this.redis.hSet(
+      this.userKey + userId,
+      this.prefix + this.req.session.id,
+      +this.req.session.cookie.expires,
+    );
+    return this.req.session.id;
   }
 
   async delete(sessionId: string, userId: string): Promise<void> {
-    await this.redis.del(this.config.get(SESSION.STORAGE_PREFIX) + sessionId);
-    await this.redis.hDel(
-      this.config.get(SESSION.STORAGE_USER_KEY) + userId,
-      this.config.get(SESSION.STORAGE_PREFIX) + sessionId,
-    );
+    const sid = this.prefix + sessionId;
+    const uid = this.userKey + userId;
+
+    await Promise.all([
+      this.redis.del(this.shadowKey + sessionId),
+      this.redis.del(sid),
+      this.redis.hDel(uid, sid),
+    ]);
   }
 }

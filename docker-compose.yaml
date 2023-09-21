@@ -3,23 +3,22 @@ services:
 
   redis:
     image: redis
+    hostname: ${REDIS_HOST:-redis}
     restart: always
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --dir "/data"
     ports:
-      - "6379:6379"
+      - ${REDIS_PORT:-6379}:6379
+    command: redis-server --appendonly yes --dir "/data"
 
   mongo:
     image: mongo
+    hostname: ${MONGO_HOST:-mongo}
     restart: always
     volumes:
       - mongo_data:/data/db
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-root}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-password}
     ports:
-      - "27017:27017"
+      - ${MONGO_PORT:-27017}:27017
 
 volumes:
   redis_data:

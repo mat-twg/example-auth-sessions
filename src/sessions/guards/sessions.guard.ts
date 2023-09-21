@@ -1,21 +1,13 @@
-import { ConfigService } from '@nestjs/config';
 import {
-  ExecutionContext,
-  Inject,
   Injectable,
+  ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
-import { REDIS } from '../../redis/constants';
-import { RedisClientType } from 'redis';
 import { SessionsService } from '../sessions.service';
 
 @Injectable()
 export class SessionsGuard {
-  constructor(
-    private readonly config: ConfigService,
-    private readonly sessionsService: SessionsService,
-    @Inject(REDIS) private readonly redis: RedisClientType,
-  ) {}
+  constructor(private readonly sessionsService: SessionsService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -23,6 +15,6 @@ export class SessionsGuard {
     if (!session) {
       throw new UnauthorizedException();
     }
-    return session.userId === request.session.userId;
+    return session.userId === request.session?.userId;
   }
 }
